@@ -1,10 +1,12 @@
+mod char_magnification;
 mod charset;
 mod code_table;
 mod font;
 
-pub use self::charset::Charset;
-pub use self::code_table::CodeTable;
-pub use self::font::Font;
+pub use char_magnification::CharMagnification;
+pub use charset::Charset;
+pub use code_table::CodeTable;
+pub use font::Font;
 
 /// Common commands usefull for the printer
 #[derive(Clone, Debug)]
@@ -35,6 +37,8 @@ pub enum Command {
     BoldOff,
     DoubleStrikeOn,
     DoubleStrikeOff,
+    WhiteBlackReverseOn,
+    WhiteBlackReverseOff,
     /// Equivalent to ESC * m = 0
     Bitmap,
     /// Change line size
@@ -48,6 +52,12 @@ pub enum Command {
         units: u8,
     },
     DefaultLineSpacing,
+    CharSpacing {
+        units: u8,
+    },
+    CharSize {
+        magnification: CharMagnification,
+    },
 }
 
 impl Command {
@@ -79,11 +89,15 @@ impl Command {
             Command::BoldOff => vec![0x1b, 0x45, 0x00],
             Command::DoubleStrikeOn => vec![0x1b, 0x47, 0x01],
             Command::DoubleStrikeOff => vec![0x1b, 0x47, 0x00],
+            Command::WhiteBlackReverseOn => vec![0x1d, 0x42, 0x01],
+            Command::WhiteBlackReverseOff => vec![0x1d, 0x42, 0x00],
             Command::Bitmap => vec![0x1b, 0x2a],
             Command::FeedPaper { units } => vec![0x1b, 0x4a, *units],
             Command::FeedLines { lines } => vec![0x1b, 0x64, *lines],
             Command::LineSpacing { units } => vec![0x1b, 0x33, *units],
             Command::DefaultLineSpacing => vec![0x1b, 0x32],
+            Command::CharSpacing { units } => vec![0x1b, 0x20, *units],
+            Command::CharSize { magnification } => vec![0x1d, 0x21, magnification.to_byte()],
         }
     }
 }

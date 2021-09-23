@@ -7,5 +7,6 @@ mod error;
 pub mod instruction;
 mod printer;
 
+pub use config::PrinterConfig;
 pub use error::{Error, Result};
 pub use printer::{Printer, PrinterDevice};

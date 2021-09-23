@@ -1,10 +1,8 @@
-use escpos_md::config::width::TM_T20II_80MM_WIDTH;
-use escpos_md::{Printer, Result};
+use escpos_md::{PrinterConfig, Result};
 use std::io;
 
 fn main() -> Result<()> {
-    Printer::builder()
-        .width(TM_T20II_80MM_WIDTH)
+    PrinterConfig::tm_t20ii()
         .build(io::stdout())
         .println("Hello world!")?
         .feed_lines(5)?

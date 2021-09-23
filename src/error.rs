@@ -8,6 +8,8 @@ pub enum Error {
     Cp437(codepage_437::Cp437Error),
     #[error("Image scale must be greater than 0 and less than or equal to 1")]
     InvalidImageScale,
+    #[error("Character magnification must greater than 0 and less than or equal to 8")]
+    InvalidCharMagnification,
 }
 
 impl From<codepage_437::IntoCp437Error> for Error {

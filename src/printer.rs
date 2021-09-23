@@ -1,6 +1,7 @@
-use crate::config::width::DEFAULT_WIDTH;
+use crate::command::{CharMagnification, Command};
+use crate::config::PrinterConfig;
 use crate::error::Result;
-use crate::{command::Command, instruction::EscposImage};
+use crate::instruction::EscposImage;
 use codepage_437::{IntoCp437, CP437_CONTROL};
 use std::io;
 
@@ -17,45 +18,11 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct PrinterConfig {
-    width: usize,
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct PrinterState {
+    char_spacing: u8,
     line_spacing: Option<u8>,
-}
-
-pub struct PrinterBuilder {
-    pub width: usize,
-}
-
-impl PrinterBuilder {
-    pub fn width(&mut self, width: usize) -> &mut Self {
-        self.width = width;
-        self
-    }
-
-    fn config(&self) -> PrinterConfig {
-        PrinterConfig { width: self.width }
-    }
-
-    pub fn build<D>(&self, device: D) -> Printer<D> {
-        Printer {
-            device,
-            config: self.config(),
-            state: PrinterState::default(),
-        }
-    }
-}
-
-impl Default for PrinterBuilder {
-    fn default() -> Self {
-        Self {
-            width: DEFAULT_WIDTH,
-        }
-    }
+    char_magnification: CharMagnification,
 }
 
 #[derive(Clone, Debug)]
@@ -65,9 +32,28 @@ pub struct Printer<D> {
     state: PrinterState,
 }
 
-impl Printer<io::Stdout> {
-    pub fn builder() -> PrinterBuilder {
-        PrinterBuilder::default()
+impl<D> Printer<D> {
+    pub fn builder() -> PrinterConfig {
+        PrinterConfig::default()
+    }
+
+    pub fn new(device: D, config: PrinterConfig) -> Self {
+        let state = PrinterState {
+            char_spacing: config.char_spacing as u8,
+            line_spacing: None,
+            char_magnification: CharMagnification::default(),
+        };
+        Printer {
+            device,
+            config,
+            state,
+        }
+    }
+}
+
+impl PrinterConfig {
+    pub fn build<D>(&self, device: D) -> Printer<D> {
+        Printer::new(device, self.clone())
     }
 }
 
@@ -109,6 +95,8 @@ where
         match cmd {
             Command::LineSpacing { units } => self.state.line_spacing = Some(*units),
             Command::DefaultLineSpacing => self.state.line_spacing = None,
+            Command::CharSpacing { units } => self.state.char_spacing = *units,
+            Command::CharSize { magnification } => self.state.char_magnification = *magnification,
             _ => {} // do nothing
         }
         Ok(self)
