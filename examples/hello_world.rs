@@ -7,7 +7,7 @@ fn main() -> Result<()> {
         .width(TM_T20II_80MM_WIDTH)
         .build(io::stdout())
         .println("Hello world!")?
-        .jump(5)?
+        .feed_lines(5)?
         .cut()?;
     Ok(())
 }

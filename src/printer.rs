@@ -17,6 +17,16 @@ where
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PrinterConfig {
+    width: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PrinterState {
+    line_spacing: Option<u8>,
+}
+
 pub struct PrinterBuilder {
     pub width: usize,
 }
@@ -27,10 +37,15 @@ impl PrinterBuilder {
         self
     }
 
-    pub fn build<D>(&mut self, device: D) -> Printer<D> {
+    fn config(&self) -> PrinterConfig {
+        PrinterConfig { width: self.width }
+    }
+
+    pub fn build<D>(&self, device: D) -> Printer<D> {
         Printer {
             device,
-            width: self.width,
+            config: self.config(),
+            state: PrinterState::default(),
         }
     }
 }
@@ -43,9 +58,11 @@ impl Default for PrinterBuilder {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Printer<D> {
     device: D,
-    width: usize,
+    config: PrinterConfig,
+    state: PrinterState,
 }
 
 impl Printer<io::Stdout> {
@@ -60,17 +77,25 @@ where
 {
     pub fn print(&mut self, text: impl ToString) -> Result<&mut Self> {
         let content = text.to_string().into_cp437(&CP437_CONTROL)?;
-        self.raw(content)
+        unsafe { self.raw(content) }
     }
 
     pub fn println(&mut self, text: impl ToString) -> Result<&mut Self> {
         self.print(text.to_string() + "\n")
     }
 
-    pub fn jump(&mut self, lines: usize) -> Result<&mut Self> {
-        let mut bytes = Vec::with_capacity(lines);
-        bytes.resize(lines, b'\n');
-        self.raw(bytes)
+    pub fn feed_lines(&mut self, lines: usize) -> Result<&mut Self> {
+        for _ in 0..lines / u8::MAX as usize {
+            self.command(&Command::FeedLines { lines: u8::MAX })?;
+        }
+        self.command(&Command::FeedLines { lines: lines as u8 })
+    }
+
+    pub fn feed_paper(&mut self, units: usize) -> Result<&mut Self> {
+        for _ in 0..units / u8::MAX as usize {
+            self.command(&Command::FeedPaper { units: u8::MAX })?;
+        }
+        self.command(&Command::FeedPaper { units: units as u8 })
     }
 
     pub fn cut(&mut self) -> Result<&mut Self> {
@@ -78,14 +103,22 @@ where
     }
 
     pub fn command(&mut self, cmd: &Command) -> Result<&mut Self> {
-        self.raw(&cmd.as_bytes())
+        unsafe {
+            self.raw(&cmd.as_bytes())?;
+        }
+        match cmd {
+            Command::LineSpacing { units } => self.state.line_spacing = Some(*units),
+            Command::DefaultLineSpacing => self.state.line_spacing = None,
+            _ => {} // do nothing
+        }
+        Ok(self)
     }
 
     pub fn image(&mut self, image: &EscposImage) -> Result<&mut Self> {
-        self.raw(image.as_bytes(self.width))
+        unsafe { self.raw(image.as_bytes(self.config.width, self.state.line_spacing)) }
     }
 
-    pub fn raw(&mut self, data: impl AsRef<[u8]>) -> Result<&mut Self> {
+    pub unsafe fn raw(&mut self, data: impl AsRef<[u8]>) -> Result<&mut Self> {
         self.device.write_all(data.as_ref())?;
         Ok(self)
     }

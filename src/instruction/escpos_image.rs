@@ -92,21 +92,18 @@ impl EscposImage {
         }
     }
 
-    pub fn as_bytes(&self, printer_width: usize) -> Vec<u8> {
+    pub fn as_bytes(&self, printer_width: usize, line_spacing: Option<u8>) -> Vec<u8> {
         let mut feed = Vec::new();
-        feed.extend_from_slice(&Command::NoLine.as_bytes());
+        feed.extend_from_slice(&Command::LineSpacing { units: 0 }.as_bytes());
 
         let (im_width, im_height) = self.img.dimensions();
         // We redefine the aspect ratio
         let aspect_ratio = (im_width as f64) / (im_height as f64);
 
         // Each row will contain the information of 8 rows from the picture
-        //const printer_width: usize = 384;
-        //const printer_width: usize = 576;
-        //let mut printer_rows: Vec<[u8; printer_width]> = Vec::new();
         let mut printer_rows: Vec<Vec<u8>> = Vec::new();
 
-        // El *3 es por la baja densidad de impresión vertical (1 byte en lugar de 3)
+        // Multiplied by 3 to account for the reduced vertical density
         let new_height = ((printer_width as f64) / (aspect_ratio * 3.0)).floor() as u32;
 
         let mut img = image::imageops::resize(
@@ -160,13 +157,20 @@ impl EscposImage {
             // The formula on how many pixels we will do, is nL + nH * 256
             feed.push((printer_width % 256) as u8); // nL
             feed.push((printer_width / 256) as u8); // nH
-                                                    // feed.push(0x80); // nL
-                                                    // feed.push(0x01); // nH
             feed.extend_from_slice(printer_row);
             feed.push(b'\n'); // Line feed and print
         }
-        feed.extend_from_slice(&Command::ResetLine.as_bytes());
-        feed.extend_from_slice(&Command::Reset.as_bytes());
+
+        if let Some(line_spacing) = line_spacing {
+            feed.extend_from_slice(
+                &Command::LineSpacing {
+                    units: line_spacing,
+                }
+                .as_bytes(),
+            );
+        } else {
+            feed.extend_from_slice(&Command::DefaultLineSpacing.as_bytes());
+        }
 
         feed
     }

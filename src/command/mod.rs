@@ -31,14 +31,23 @@ pub enum Command {
     UnderlineOff,
     Underline1Dot,
     Underline2Dot,
-    /// Equivalent to ESC * m = 0
     BoldOn,
     BoldOff,
+    DoubleStrikeOn,
+    DoubleStrikeOff,
     /// Equivalent to ESC * m = 0
     Bitmap,
     /// Change line size
-    NoLine,
-    ResetLine,
+    FeedPaper {
+        units: u8,
+    },
+    FeedLines {
+        lines: u8,
+    },
+    LineSpacing {
+        units: u8,
+    },
+    DefaultLineSpacing,
 }
 
 impl Command {
@@ -68,9 +77,13 @@ impl Command {
             Command::Underline2Dot => vec![0x1b, 0x2d, 0x02],
             Command::BoldOn => vec![0x1b, 0x45, 0x01],
             Command::BoldOff => vec![0x1b, 0x45, 0x00],
+            Command::DoubleStrikeOn => vec![0x1b, 0x47, 0x01],
+            Command::DoubleStrikeOff => vec![0x1b, 0x47, 0x00],
             Command::Bitmap => vec![0x1b, 0x2a],
-            Command::NoLine => vec![0x1b, 0x33, 0x00],
-            Command::ResetLine => vec![0x1b, 0x32],
+            Command::FeedPaper { units } => vec![0x1b, 0x4a, *units],
+            Command::FeedLines { lines } => vec![0x1b, 0x64, *lines],
+            Command::LineSpacing { units } => vec![0x1b, 0x33, *units],
+            Command::DefaultLineSpacing => vec![0x1b, 0x32],
         }
     }
 }
