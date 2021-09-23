@@ -1,5 +1,5 @@
 /// Possible character sets
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum CodeTable {
     USA,
     Latin2,

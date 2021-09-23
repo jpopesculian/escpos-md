@@ -10,6 +10,8 @@ pub enum Error {
     InvalidImageScale,
     #[error("Character magnification must greater than 0 and less than or equal to 8")]
     InvalidCharMagnification,
+    #[error("Spacing must be between 0 and 255 inclusive")]
+    InvalidSpacingParam,
 }
 
 impl From<codepage_437::IntoCp437Error> for Error {

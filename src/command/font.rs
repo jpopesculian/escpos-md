@@ -1,11 +1,17 @@
 /// Common fonts used in thermal printers
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum Font {
     FontA,
     FontB,
     FontC,
     FontD,
     FontE,
+}
+
+impl Default for Font {
+    fn default() -> Self {
+        Font::FontA
+    }
 }
 
 impl Font {

@@ -31,7 +31,7 @@ impl CharMagnification {
     }
 
     pub fn to_byte(&self) -> u8 {
-        (self.width - 1) | ((self.height - 1) << 4)
+        (self.height - 1) | ((self.width - 1) << 4)
     }
 }
 

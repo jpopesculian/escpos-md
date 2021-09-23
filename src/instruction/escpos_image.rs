@@ -94,7 +94,7 @@ impl EscposImage {
 
     pub fn as_bytes(&self, printer_width: usize, line_spacing: Option<u8>) -> Vec<u8> {
         let mut feed = Vec::new();
-        feed.extend_from_slice(&Command::LineSpacing { units: 0 }.as_bytes());
+        feed.extend_from_slice(&Command::LineSpacing(0).as_bytes());
 
         let (im_width, im_height) = self.img.dimensions();
         // We redefine the aspect ratio
@@ -162,12 +162,7 @@ impl EscposImage {
         }
 
         if let Some(line_spacing) = line_spacing {
-            feed.extend_from_slice(
-                &Command::LineSpacing {
-                    units: line_spacing,
-                }
-                .as_bytes(),
-            );
+            feed.extend_from_slice(&Command::LineSpacing(line_spacing).as_bytes());
         } else {
             feed.extend_from_slice(&Command::DefaultLineSpacing.as_bytes());
         }

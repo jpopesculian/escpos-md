@@ -1,7 +1,8 @@
-use crate::command::{CharMagnification, Command};
+use crate::command::{CharMagnification, Charset, CodeTable, Command, Font, UnderlineThickness};
 use crate::config::PrinterConfig;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::instruction::EscposImage;
+use crate::split_words::split_words;
 use codepage_437::{IntoCp437, CP437_CONTROL};
 use std::io;
 
@@ -18,10 +19,13 @@ where
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct PrinterState {
     char_spacing: u8,
     line_spacing: Option<u8>,
+    font: Font,
+    left_offset: usize,
+    split_words: bool,
     char_magnification: CharMagnification,
 }
 
@@ -37,33 +41,104 @@ impl<D> Printer<D> {
         PrinterConfig::default()
     }
 
-    pub fn new(device: D, config: PrinterConfig) -> Self {
+    fn reduce_spacing_param(spacing: usize) -> Result<u8> {
+        if spacing > u8::MAX as usize {
+            Err(Error::InvalidSpacingParam)
+        } else {
+            Ok(spacing as u8)
+        }
+    }
+
+    pub fn new(device: D, config: PrinterConfig) -> Result<Self> {
         let state = PrinterState {
-            char_spacing: config.char_spacing as u8,
+            char_spacing: Self::reduce_spacing_param(config.char_spacing)?,
             line_spacing: None,
+            font: Font::default(),
+            left_offset: 0,
+            split_words: true,
             char_magnification: CharMagnification::default(),
         };
-        Printer {
+        Ok(Printer {
             device,
             config,
             state,
-        }
+        })
+    }
+
+    fn calc_char_size(&self) -> usize {
+        (self.config.font_widths.get(&self.state.font) + self.state.char_spacing as usize)
+            * self.state.char_magnification.width() as usize
     }
 }
 
 impl PrinterConfig {
-    pub fn build<D>(&self, device: D) -> Printer<D> {
+    pub fn build<D>(&self, device: D) -> Result<Printer<D>> {
         Printer::new(device, self.clone())
     }
+}
+
+macro_rules! cmd_fn {
+    ($name:ident, $cmd:ident) => {
+        #[inline]
+        pub fn $name(&mut self) -> Result<&mut Self> {
+            self.command(&Command::$cmd)
+        }
+    };
+    ($name:ident, $cmd:ident, $param:ident, $param_ty:ty) => {
+        #[inline]
+        pub fn $name(&mut self, $param: $param_ty) -> Result<&mut Self> {
+            self.command(&Command::$cmd($param))
+        }
+    };
 }
 
 impl<D> Printer<D>
 where
     D: PrinterDevice,
 {
+    cmd_fn!(cut, Cut);
+    cmd_fn!(init, Init);
+    cmd_fn!(print_mode_default, PrintModeDefault);
+    cmd_fn!(charset, Charset, charset, Charset);
+    cmd_fn!(code_table, CodeTable, code_table, CodeTable);
+    cmd_fn!(font, Font, font, Font);
+    cmd_fn!(underline, Underline, thickness, UnderlineThickness);
+    cmd_fn!(bold, Bold, enabled, bool);
+    cmd_fn!(double_strike, DoubleStrike, enabled, bool);
+    cmd_fn!(white_black_reverse, WhiteBlackReverse, enabled, bool);
+    cmd_fn!(char_size, CharSize, magnification, CharMagnification);
+    cmd_fn!(split_words, SplitWords, enabled, bool);
+
+    pub fn reset(&mut self) -> Result<&mut Self> {
+        self.state.split_words = true;
+        let og_char_spacing = self.config.char_spacing;
+        self.init()?
+            .print_mode_default()?
+            .white_black_reverse(false)?
+            .double_strike(false)?
+            .char_spacing(og_char_spacing)?
+            .line_spacing(None)
+    }
+
     pub fn print(&mut self, text: impl ToString) -> Result<&mut Self> {
-        let content = text.to_string().into_cp437(&CP437_CONTROL)?;
-        unsafe { self.raw(content) }
+        let mut content = text.to_string().into_cp437(&CP437_CONTROL)?;
+
+        let new_offset = if self.state.split_words {
+            split_words(
+                &mut content,
+                self.state.left_offset,
+                self.config.width,
+                self.calc_char_size(),
+            )
+        } else {
+            (self.state.left_offset + content.len() * self.calc_char_size()) % self.config.width
+        };
+
+        unsafe {
+            self.raw(content)?;
+        }
+        self.state.left_offset = new_offset;
+        Ok(self)
     }
 
     pub fn println(&mut self, text: impl ToString) -> Result<&mut Self> {
@@ -72,20 +147,31 @@ where
 
     pub fn feed_lines(&mut self, lines: usize) -> Result<&mut Self> {
         for _ in 0..lines / u8::MAX as usize {
-            self.command(&Command::FeedLines { lines: u8::MAX })?;
+            self.command(&Command::FeedLines(u8::MAX))?;
         }
-        self.command(&Command::FeedLines { lines: lines as u8 })
+        self.command(&Command::FeedLines(lines as u8))
     }
 
     pub fn feed_paper(&mut self, units: usize) -> Result<&mut Self> {
         for _ in 0..units / u8::MAX as usize {
-            self.command(&Command::FeedPaper { units: u8::MAX })?;
+            self.command(&Command::FeedPaper(u8::MAX))?;
         }
-        self.command(&Command::FeedPaper { units: units as u8 })
+        self.command(&Command::FeedPaper(units as u8))
     }
 
-    pub fn cut(&mut self) -> Result<&mut Self> {
-        self.command(&Command::Cut)
+    pub fn char_spacing(&mut self, char_spacing: usize) -> Result<&mut Self> {
+        self.command(&Command::CharSpacing(Self::reduce_spacing_param(
+            char_spacing,
+        )?))
+    }
+
+    pub fn line_spacing(&mut self, line_spacing: Option<usize>) -> Result<&mut Self> {
+        let cmd = if let Some(line_spacing) = line_spacing {
+            Command::LineSpacing(Self::reduce_spacing_param(line_spacing)?)
+        } else {
+            Command::DefaultLineSpacing
+        };
+        self.command(&cmd)
     }
 
     pub fn command(&mut self, cmd: &Command) -> Result<&mut Self> {
@@ -93,17 +179,27 @@ where
             self.raw(&cmd.as_bytes())?;
         }
         match cmd {
-            Command::LineSpacing { units } => self.state.line_spacing = Some(*units),
+            Command::LineSpacing(units) => self.state.line_spacing = Some(*units),
             Command::DefaultLineSpacing => self.state.line_spacing = None,
-            Command::CharSpacing { units } => self.state.char_spacing = *units,
-            Command::CharSize { magnification } => self.state.char_magnification = *magnification,
+            Command::CharSpacing(units) => self.state.char_spacing = *units,
+            Command::CharSize(magnification) => self.state.char_magnification = *magnification,
+            Command::Font(font) => self.state.font = *font,
+            Command::SplitWords(split) => self.state.split_words = *split,
+            Command::Init => {
+                self.state.char_magnification = CharMagnification::default();
+                self.state.font = Font::default();
+            }
             _ => {} // do nothing
         }
         Ok(self)
     }
 
     pub fn image(&mut self, image: &EscposImage) -> Result<&mut Self> {
-        unsafe { self.raw(image.as_bytes(self.config.width, self.state.line_spacing)) }
+        unsafe {
+            self.raw(image.as_bytes(self.config.width, self.state.line_spacing))?;
+        }
+        self.state.left_offset = 0;
+        Ok(self)
     }
 
     pub unsafe fn raw(&mut self, data: impl AsRef<[u8]>) -> Result<&mut Self> {
