@@ -24,20 +24,11 @@ impl Default for FontWidths {
 }
 
 impl FontWidths {
-    fn index(font: &Font) -> usize {
-        match font {
-            Font::FontA => 0,
-            Font::FontB => 1,
-            Font::FontC => 2,
-            Font::FontD => 3,
-            Font::FontE => 4,
-        }
-    }
     pub fn get(&self, font: &Font) -> usize {
-        self.widths[Self::index(font)]
+        self.widths[*font as usize]
     }
     pub fn set(&mut self, font: &Font, width: usize) {
-        self.widths[Self::index(font)] = width;
+        self.widths[*font as usize] = width;
     }
 }
 

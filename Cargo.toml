@@ -9,4 +9,5 @@ license = "MIT"
 [dependencies]
 codepage-437 = "0.1.0"
 image = "0.23.14"
+pulldown-cmark = "0.8.0"
 thiserror = "1.0.29"

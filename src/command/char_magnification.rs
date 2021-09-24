@@ -1,6 +1,9 @@
 use crate::error::{Error, Result};
 
-#[derive(Clone, Debug, Copy)]
+const PARAM_MIN: u8 = 1;
+const PARAM_MAX: u8 = 8;
+
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct CharMagnification {
     width: u8,
     height: u8,
@@ -23,7 +26,7 @@ impl CharMagnification {
 
     pub fn check_param(param: u8) -> Result<()> {
         // 0 < param <= 8
-        if param < 1 || param > 8 {
+        if param < PARAM_MIN || param > PARAM_MAX {
             Err(Error::InvalidCharMagnification)
         } else {
             Ok(())

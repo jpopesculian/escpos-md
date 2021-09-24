@@ -1,5 +1,5 @@
 /// Possible character sets
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum Charset {
     /// United states of america
     USA,

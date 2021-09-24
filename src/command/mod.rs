@@ -8,7 +8,7 @@ pub use charset::Charset;
 pub use code_table::CodeTable;
 pub use font::Font;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
 pub enum UnderlineThickness {
     Off = 0,
@@ -22,7 +22,7 @@ impl Default for UnderlineThickness {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Justification {
     Left = 0,
