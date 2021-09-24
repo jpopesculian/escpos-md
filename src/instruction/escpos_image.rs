@@ -1,24 +1,16 @@
-use crate::command::Command;
+use crate::command::{Command, Justification};
 use crate::error::{Error, Result};
 use image::Pixel;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BitMapAlgorithm {
     Threshold(u8),
     Dithering,
 }
 
 #[derive(Debug, Clone)]
-pub enum Justification {
-    Left,
-    Center,
-    Right,
-}
-
-#[derive(Debug, Clone)]
 pub struct ImageOptions {
     bit_map_algorithm: BitMapAlgorithm,
-    justification: Justification,
     scale: f64,
     filter_type: image::imageops::FilterType,
 }
@@ -36,10 +28,6 @@ impl ImageOptions {
             Ok(self)
         }
     }
-    pub fn justification(&mut self, justification: Justification) -> &mut Self {
-        self.justification = justification;
-        self
-    }
     pub fn filter_type(&mut self, filter_type: image::imageops::FilterType) -> &mut Self {
         self.filter_type = filter_type;
         self
@@ -50,7 +38,6 @@ impl Default for ImageOptions {
     fn default() -> Self {
         Self {
             bit_map_algorithm: BitMapAlgorithm::Dithering,
-            justification: Justification::Left,
             scale: 1.,
             filter_type: image::imageops::FilterType::Gaussian,
         }
@@ -64,14 +51,32 @@ pub struct EscposImage {
 
 impl EscposImage {
     pub fn new(img: &image::DynamicImage, opts: &ImageOptions) -> Self {
-        let mut img = img.to_luma8();
+        Self {
+            img: img.to_luma8(),
+            opts: opts.clone(),
+        }
+    }
 
-        let (im_width, im_height) = img.dimensions();
+    pub fn as_bytes(
+        &self,
+        printer_width: usize,
+        justification: Justification,
+        line_spacing: Option<u8>,
+    ) -> Vec<u8> {
+        let mut feed = Vec::new();
+        feed.extend_from_slice(&Command::LineSpacing(0).as_bytes());
+
+        // Each row will contain the information of 8 rows from the picture
+        let mut printer_rows: Vec<Vec<u8>> = Vec::new();
+
+        let (im_width, im_height) = self.img.dimensions();
+        // We redefine the aspect ratio
         let aspect_ratio = (im_width as f64) / (im_height as f64);
-        let sc_width = (im_width as f64) * opts.scale;
+
+        let sc_width = (im_width as f64) * self.opts.scale;
         let sc_height = ((sc_width) / aspect_ratio).floor() as u32;
         let sc_width = sc_width.floor() as u32;
-        let x_offset = match opts.justification {
+        let x_offset = match justification {
             Justification::Left => 0,
             Justification::Center => (im_width - sc_width) / 2,
             Justification::Right => im_width - sc_width,
@@ -80,34 +85,18 @@ impl EscposImage {
         let mut composite = image::GrayImage::from_pixel(im_width, sc_height, [255].into());
         image::imageops::overlay(
             &mut composite,
-            &image::imageops::resize(&img, sc_width, sc_height, opts.filter_type),
+            &image::imageops::resize(&self.img, sc_width, sc_height, self.opts.filter_type),
             x_offset,
             0,
         );
-        img = image::imageops::crop(&mut composite, 0, 0, im_width, sc_height).to_image();
-
-        Self {
-            img,
-            opts: opts.clone(),
-        }
-    }
-
-    pub fn as_bytes(&self, printer_width: usize, line_spacing: Option<u8>) -> Vec<u8> {
-        let mut feed = Vec::new();
-        feed.extend_from_slice(&Command::LineSpacing(0).as_bytes());
-
-        let (im_width, im_height) = self.img.dimensions();
-        // We redefine the aspect ratio
-        let aspect_ratio = (im_width as f64) / (im_height as f64);
-
-        // Each row will contain the information of 8 rows from the picture
-        let mut printer_rows: Vec<Vec<u8>> = Vec::new();
+        let mut img = image::imageops::crop(&mut composite, 0, 0, im_width, sc_height).to_image();
 
         // Multiplied by 3 to account for the reduced vertical density
-        let new_height = ((printer_width as f64) / (aspect_ratio * 3.0)).floor() as u32;
+        let new_height =
+            ((printer_width as f64 * self.opts.scale) / (aspect_ratio * 3.0)).floor() as u32;
 
-        let mut img = image::imageops::resize(
-            &self.img,
+        img = image::imageops::resize(
+            &img,
             printer_width as u32,
             new_height,
             self.opts.filter_type,

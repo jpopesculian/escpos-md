@@ -1,4 +1,6 @@
-use crate::command::{CharMagnification, Charset, CodeTable, Command, Font, UnderlineThickness};
+use crate::command::{
+    CharMagnification, Charset, CodeTable, Command, Font, Justification, UnderlineThickness,
+};
 use crate::config::PrinterConfig;
 use crate::error::{Error, Result};
 use crate::instruction::EscposImage;
@@ -26,6 +28,8 @@ pub struct PrinterState {
     font: Font,
     left_offset: usize,
     split_words: bool,
+    left_margin: u16,
+    justification: Justification,
     char_magnification: CharMagnification,
 }
 
@@ -56,6 +60,8 @@ impl<D> Printer<D> {
             font: Font::default(),
             left_offset: 0,
             split_words: true,
+            left_margin: 0,
+            justification: Justification::default(),
             char_magnification: CharMagnification::default(),
         };
         Ok(Printer {
@@ -68,6 +74,10 @@ impl<D> Printer<D> {
     fn calc_char_size(&self) -> usize {
         (self.config.font_widths.get(&self.state.font) + self.state.char_spacing as usize)
             * self.state.char_magnification.width() as usize
+    }
+
+    fn printable_width(&self) -> usize {
+        self.config.width - (self.state.left_margin as usize).min(self.config.width)
     }
 }
 
@@ -108,6 +118,8 @@ where
     cmd_fn!(white_black_reverse, WhiteBlackReverse, enabled, bool);
     cmd_fn!(char_size, CharSize, magnification, CharMagnification);
     cmd_fn!(split_words, SplitWords, enabled, bool);
+    cmd_fn!(left_margin, LeftMargin, margin, u16);
+    cmd_fn!(justification, Justification, justification, Justification);
 
     pub fn reset(&mut self) -> Result<&mut Self> {
         self.state.split_words = true;
@@ -117,7 +129,9 @@ where
             .white_black_reverse(false)?
             .double_strike(false)?
             .char_spacing(og_char_spacing)?
-            .line_spacing(None)
+            .line_spacing(None)?
+            .left_margin(0)?
+            .justification(Justification::default())
     }
 
     pub fn print(&mut self, text: impl ToString) -> Result<&mut Self> {
@@ -127,11 +141,12 @@ where
             split_words(
                 &mut content,
                 self.state.left_offset,
-                self.config.width,
+                self.printable_width(),
                 self.calc_char_size(),
             )
         } else {
-            (self.state.left_offset + content.len() * self.calc_char_size()) % self.config.width
+            (self.state.left_offset + content.len() * self.calc_char_size())
+                % self.printable_width()
         };
 
         unsafe {
@@ -185,6 +200,8 @@ where
             Command::CharSize(magnification) => self.state.char_magnification = *magnification,
             Command::Font(font) => self.state.font = *font,
             Command::SplitWords(split) => self.state.split_words = *split,
+            Command::LeftMargin(margin) => self.state.left_margin = *margin,
+            Command::Justification(justification) => self.state.justification = *justification,
             Command::Init => {
                 self.state.char_magnification = CharMagnification::default();
                 self.state.font = Font::default();
@@ -196,7 +213,11 @@ where
 
     pub fn image(&mut self, image: &EscposImage) -> Result<&mut Self> {
         unsafe {
-            self.raw(image.as_bytes(self.config.width, self.state.line_spacing))?;
+            self.raw(image.as_bytes(
+                self.printable_width(),
+                self.state.justification,
+                self.state.line_spacing,
+            ))?;
         }
         self.state.left_offset = 0;
         Ok(self)

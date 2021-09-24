@@ -6,6 +6,7 @@ fn main() -> Result<()> {
     let img = image::open("./examples/lena.jpg").unwrap();
     PrinterConfig::tm_t20ii()
         .build(io::stdout())?
+        .reset()?
         .println("dithered:")?
         .image(&EscposImage::new(&img, &Default::default()))?
         .println("threshold:")?

@@ -17,8 +17,13 @@ pub fn split_words(
             }
             // continue or wrap line if width reached
             b' ' => {
-                new_offset = (new_offset + char_size) % printer_width;
-                content_idx += 1;
+                new_offset = new_offset + char_size;
+                if new_offset > printer_width {
+                    content.remove(content_idx);
+                    new_offset = 0;
+                } else {
+                    content_idx += 1;
+                }
             }
             // split word or append if unnecessary
             _ => {

@@ -11,9 +11,29 @@ pub use font::Font;
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum UnderlineThickness {
-    Off,
-    OneDot,
-    TwoDot,
+    Off = 0,
+    OneDot = 1,
+    TwoDot = 2,
+}
+
+impl Default for UnderlineThickness {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum Justification {
+    Left = 0,
+    Center = 1,
+    Right = 2,
+}
+
+impl Default for Justification {
+    fn default() -> Self {
+        Self::Left
+    }
 }
 
 /// Common commands usefull for the printer
@@ -45,6 +65,8 @@ pub enum Command {
     CharSpacing(u8),
     CharSize(CharMagnification),
     SplitWords(bool),
+    LeftMargin(u16),
+    Justification(Justification),
 }
 
 impl Command {
@@ -81,6 +103,12 @@ impl Command {
             Command::CharSpacing(units) => vec![0x1b, 0x20, *units],
             Command::CharSize(magnification) => vec![0x1d, 0x21, magnification.to_byte()],
             Command::SplitWords(_) => vec![],
+            Command::LeftMargin(margin) => {
+                let mut res = vec![0x1d, 0x4c];
+                res.append(&mut margin.to_le_bytes().to_vec());
+                res
+            }
+            Command::Justification(justification) => vec![0x1b, 0x61, *justification as u8],
         }
     }
 }
