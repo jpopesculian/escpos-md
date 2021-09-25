@@ -202,6 +202,9 @@ where
             Command::SplitWords(split) => self.state.split_words = *split,
             Command::LeftMargin(margin) => self.state.left_margin = *margin,
             Command::Justification(justification) => self.state.justification = *justification,
+            Command::FeedPaper(_) | Command::FeedLines(_) => {
+                self.state.left_offset = 0;
+            }
             Command::Init => {
                 self.state.char_magnification = CharMagnification::default();
                 self.state.font = Font::default();

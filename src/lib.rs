@@ -11,6 +11,7 @@ mod markdown;
 mod printer;
 mod split_words;
 pub mod style;
+mod tag_ext;
 
 pub use config::PrinterConfig;
 pub use error::{Error, Result};

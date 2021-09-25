@@ -16,6 +16,13 @@ impl CharMagnification {
         Ok(CharMagnification { width, height })
     }
 
+    pub fn clamped(width: u8, height: u8) -> Self {
+        CharMagnification {
+            width: Self::clamp_param(width),
+            height: Self::clamp_param(height),
+        }
+    }
+
     pub fn width(&self) -> u8 {
         self.width
     }
@@ -31,6 +38,10 @@ impl CharMagnification {
         } else {
             Ok(())
         }
+    }
+
+    pub fn clamp_param(param: u8) -> u8 {
+        param.max(PARAM_MIN).min(PARAM_MAX)
     }
 
     pub fn to_byte(&self) -> u8 {
