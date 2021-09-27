@@ -23,21 +23,21 @@ where
 
 #[derive(Clone, Debug)]
 pub struct PrinterState {
-    char_spacing: u8,
-    line_spacing: Option<u8>,
-    font: Font,
-    left_offset: usize,
-    split_words: bool,
-    left_margin: u16,
-    justification: Justification,
-    char_magnification: CharMagnification,
+    pub(crate) char_spacing: u8,
+    pub(crate) line_spacing: Option<u8>,
+    pub(crate) font: Font,
+    pub(crate) left_offset: usize,
+    pub(crate) split_words: bool,
+    pub(crate) left_margin: u16,
+    pub(crate) justification: Justification,
+    pub(crate) char_magnification: CharMagnification,
 }
 
 #[derive(Clone, Debug)]
 pub struct Printer<D> {
-    device: D,
-    config: PrinterConfig,
-    state: PrinterState,
+    pub(crate) device: D,
+    pub(crate) config: PrinterConfig,
+    pub(crate) state: PrinterState,
 }
 
 impl<D> Printer<D> {

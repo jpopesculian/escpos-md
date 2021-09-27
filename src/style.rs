@@ -3,44 +3,66 @@ use crate::config::default::DEFAULT_CHAR_SPACING;
 use crate::error::Result;
 use crate::{Printer, PrinterDevice};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Display {
-    Block,
     Inline,
+    Block,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Style {
-    pub font: Font,
-    pub char_magnification: CharMagnification,
-    pub underline: UnderlineThickness,
+    pub display: Display,
+    // Font styles
     pub bold: bool,
-    pub white_black_reverse: bool,
-    pub split_words: bool,
-    pub justification: Justification,
+    pub char_magnification: CharMagnification,
     pub char_spacing: usize,
+    pub font: Font,
     pub line_spacing: Option<usize>,
-    pub margin_top: usize,
+    pub prefix: String,
+    pub split_words: bool,
+    pub underline: UnderlineThickness,
+    pub white_black_reverse: bool,
+    // block styles
+    pub justification: Justification,
+    pub margin_left: usize,
     pub margin_bottom: usize,
+    pub margin_top: usize,
 }
 
 impl<D> Printer<D>
 where
     D: PrinterDevice,
 {
-    pub fn style(&mut self, style: &Style, display: &Display) -> Result<&mut Self> {
-        self.font(style.font)?
+    pub(crate) fn begin_style(&mut self, style: &Style) -> Result<&mut Self> {
+        self.bold(style.bold)?
             .char_size(style.char_magnification)?
+            .char_spacing(style.char_spacing)?
+            .font(style.font)?
+            .line_spacing(style.line_spacing)?
+            .split_words(style.split_words)?
             .underline(style.underline)?
-            .bold(style.bold)?
-            .white_black_reverse(style.white_black_reverse)?
-            .char_spacing(style.char_spacing)?;
-        match display {
-            Display::Block => {
-                self.line_spacing(style.line_spacing)?
-                    .split_words(style.split_words)?
-                    .justification(style.justification)?;
+            .white_black_reverse(style.white_black_reverse)?;
+        if matches!(style.display, Display::Block) {
+            self.justification(style.justification)?
+                .feed_paper(style.margin_top)?;
+            if style.margin_left != 0 {
+                let new_left_margin = self.state.left_margin + style.margin_left as u16;
+                self.left_margin(new_left_margin)?;
             }
-            _ => {}
+        }
+        if !style.prefix.is_empty() {
+            self.print(&style.prefix)?;
+        }
+        Ok(self)
+    }
+
+    pub(crate) fn end_style(&mut self, style: &Style) -> Result<&mut Self> {
+        if matches!(style.display, Display::Block) {
+            self.feed_paper(style.margin_bottom)?;
+            if style.margin_left != 0 {
+                let new_left_margin = self.state.left_margin - style.margin_left as u16;
+                self.left_margin(new_left_margin)?;
+            }
         }
         Ok(self)
     }
@@ -49,6 +71,8 @@ where
 impl Default for Style {
     fn default() -> Self {
         Self {
+            display: Display::Block,
+            prefix: String::default(),
             font: Font::default(),
             char_magnification: CharMagnification::default(),
             underline: UnderlineThickness::default(),
@@ -58,14 +82,17 @@ impl Default for Style {
             justification: Justification::default(),
             line_spacing: None,
             char_spacing: DEFAULT_CHAR_SPACING,
-            margin_top: 80,
+            margin_top: 0,
             margin_bottom: 0,
+            margin_left: 0,
         }
     }
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct RelativeStyle {
+    pub display: Option<Display>,
+    pub prefix: Option<String>,
     pub font: Option<Font>,
     pub font_width: Option<u8>,
     pub font_height: Option<u8>,
@@ -78,30 +105,31 @@ pub struct RelativeStyle {
     pub line_spacing: Option<Option<usize>>,
     pub margin_top: Option<usize>,
     pub margin_bottom: Option<usize>,
+    pub margin_left: Option<usize>,
+}
+
+macro_rules! apply_fields {
+    ($src:ident -> $dst:ident: $($field:ident),*) => {
+        $(
+            if let Some(ref $field) = $src.$field {
+                $dst.$field = $field.clone();
+            }
+        )*
+    }
 }
 
 impl Style {
-    pub fn apply(&mut self, style: &RelativeStyle) {
-        macro_rules! apply_field {
-            ($($field:ident),*) => {
-                $(
-                    if let Some($field) = style.$field {
-                        self.$field = $field;
-                    }
-                )*
-            }
-        }
-        apply_field!(
+    pub fn apply_font(&mut self, style: &RelativeStyle) {
+        apply_fields!(
+            style -> self:
             font,
+            prefix,
             underline,
             bold,
             white_black_reverse,
             split_words,
-            justification,
             char_spacing,
-            line_spacing,
-            margin_top,
-            margin_bottom
+            line_spacing
         );
         self.char_magnification = CharMagnification::clamped(
             style
@@ -112,11 +140,22 @@ impl Style {
                 .unwrap_or_else(|| self.char_magnification.height()),
         );
     }
+    pub fn apply_block(&mut self, style: &RelativeStyle) {
+        apply_fields!(
+            style -> self:
+            display,
+            justification,
+            margin_top,
+            margin_bottom,
+            margin_left
+        );
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum StyleTag {
+    Any,
     P,
     H1,
     H2,
@@ -138,84 +177,101 @@ pub enum StyleTag {
 }
 
 impl StyleTag {
-    pub fn display(&self) -> Display {
-        match self {
-            Self::P => Display::Block,
-            Self::H1 => Display::Block,
-            Self::H2 => Display::Block,
-            Self::H3 => Display::Block,
-            Self::H4 => Display::Block,
-            Self::H5 => Display::Block,
-            Self::Blockquote => Display::Block,
-            Self::Code => Display::Inline,
-            Self::Codeblock => Display::Block,
-            Self::Ul => Display::Block,
-            Self::Ol => Display::Block,
-            Self::Li => Display::Block,
-            Self::Em => Display::Inline,
-            Self::Strong => Display::Inline,
-            Self::Strikethrough => Display::Inline,
-            Self::A => Display::Inline,
-            Self::Img => Display::Block,
-            Self::ImgCaption => Display::Block,
-        }
+    pub fn matches(&self, other: &Self) -> bool {
+        self == other || matches!(other, Self::Any) || matches!(self, Self::Any)
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum RuleMatch {
+    Child,
+    Exact,
 }
 
 #[derive(Debug, Clone)]
-pub struct ListStyle {
-    pub left_margin: usize,
-    pub symbols: Vec<String>,
-}
+pub struct Rule(Vec<StyleTag>);
 
-impl ListStyle {
-    pub fn get_symbol(&self, depth: usize) -> &str {
-        &self.symbols[depth % self.symbols.len()]
+impl Rule {
+    pub fn new<I>(tags: I) -> Self
+    where
+        I: IntoIterator<Item = StyleTag>,
+    {
+        Rule(tags.into_iter().collect())
     }
 
-    pub fn get_left_margin(&self, depth: usize) -> usize {
-        self.left_margin * depth
+    pub fn is_match(&self, tree: &[StyleTag]) -> Option<RuleMatch> {
+        Self::find_match(tree, &self.0).map(|mat| {
+            if *mat.last().unwrap() == (tree.len() - 1) {
+                RuleMatch::Exact
+            } else {
+                RuleMatch::Child
+            }
+        })
     }
-}
 
-impl Default for ListStyle {
-    fn default() -> Self {
-        ListStyle {
-            left_margin: 28,
-            symbols: vec!["*".into()],
+    fn find_match(tree: &[StyleTag], rule: &[StyleTag]) -> Option<Vec<usize>> {
+        match rule {
+            [] => None,
+            [tag] => Self::find_tag_matches(tree, tag)
+                .next()
+                .map(|idx| vec![idx]),
+            [rem @ .., tag] => {
+                for mat in Self::find_tag_matches(tree, tag) {
+                    let rem_tree = &tree[..mat];
+                    if let Some(mut mats) = Self::find_match(rem_tree, rem) {
+                        mats.push(mat);
+                        return Some(mats);
+                    }
+                }
+                None
+            }
         }
+    }
+
+    fn find_tag_matches<'a>(
+        tree: &'a [StyleTag],
+        tag: &'a StyleTag,
+    ) -> impl Iterator<Item = usize> + 'a {
+        tree.iter()
+            .enumerate()
+            .rev()
+            .filter_map(move |(idx, tree_tag)| {
+                if tree_tag.matches(tag) {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct StyleSheet {
-    pub root: Style,
-    pub list_style: ListStyle,
-    tag_styles: [RelativeStyle; 17],
+    base: Style,
+    rules: Vec<(Rule, RelativeStyle)>,
 }
 
 impl StyleSheet {
-    pub fn new(root: Style, list_style: ListStyle) -> Self {
+    pub fn new(base: Style) -> Self {
         Self {
-            root,
-            list_style,
-            tag_styles: Default::default(),
+            base,
+            rules: Vec::new(),
         }
     }
-    pub fn get_tag(&self, tag: &StyleTag) -> &RelativeStyle {
-        &self.tag_styles[*tag as usize]
-    }
-    pub fn set_tag(&mut self, tag: &StyleTag, style: RelativeStyle) {
-        self.tag_styles[*tag as usize] = style;
+
+    pub fn push(&mut self, rule: Rule, style: RelativeStyle) {
+        self.rules.push((rule, style));
     }
 
-    pub fn calc_tags<'a, I>(&self, tags: I) -> Style
-    where
-        I: Iterator<Item = &'a StyleTag>,
-    {
-        let mut style = self.root.clone();
-        for tag in tags {
-            style.apply(self.get_tag(tag));
+    pub fn get(&self, tree: &[StyleTag]) -> Style {
+        let mut style = self.base.clone();
+        for (rule, rel_style) in &self.rules {
+            if let Some(mat_kind) = rule.is_match(tree) {
+                style.apply_font(rel_style);
+                if matches!(mat_kind, RuleMatch::Exact) {
+                    style.apply_block(rel_style);
+                }
+            }
         }
         style
     }
@@ -223,9 +279,17 @@ impl StyleSheet {
 
 impl Default for StyleSheet {
     fn default() -> Self {
-        let mut this = Self::new(Style::default(), ListStyle::default());
-        this.set_tag(
-            &StyleTag::H1,
+        use StyleTag::*;
+        let mut this = Self::new(Style::default());
+        this.push(
+            Rule::new([Any]),
+            RelativeStyle {
+                margin_top: Some(60),
+                ..Default::default()
+            },
+        );
+        this.push(
+            Rule::new([H1]),
             RelativeStyle {
                 font_width: Some(3),
                 font_height: Some(3),
@@ -233,27 +297,74 @@ impl Default for StyleSheet {
                 ..Default::default()
             },
         );
-        this.set_tag(
-            &StyleTag::Li,
+        for nested_list in [[Ul, Ul], [Ul, Ol], [Ol, Ol], [Ol, Ul]] {
+            this.push(
+                Rule::new(nested_list),
+                RelativeStyle {
+                    margin_top: Some(0),
+                    margin_bottom: Some(0),
+                    ..Default::default()
+                },
+            );
+        }
+        this.push(
+            Rule::new([Li]),
             RelativeStyle {
-                margin_top: Some(10),
+                margin_top: Some(12),
+                margin_left: Some(28),
                 ..Default::default()
             },
         );
-        this.set_tag(
-            &StyleTag::Strong,
+        this.push(
+            Rule::new([Ul, Li]),
+            RelativeStyle {
+                prefix: Some("* ".into()),
+                ..Default::default()
+            },
+        );
+        this.push(
+            Rule::new([Strong]),
             RelativeStyle {
                 bold: Some(true),
                 ..Default::default()
             },
         );
-        this.set_tag(
-            &StyleTag::Em,
+        this.push(
+            Rule::new([Em]),
             RelativeStyle {
                 underline: Some(UnderlineThickness::OneDot),
                 ..Default::default()
             },
         );
         this
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn rule_matches() {
+        use StyleTag::*;
+        let tree = &[A, P, P, H1, P, P, Ul, Li];
+        assert_eq!(Rule::find_match(tree, &[P]), Some(vec![5]));
+        assert_eq!(Rule::find_match(tree, &[P, P]), Some(vec![4, 5]));
+        assert_eq!(Rule::find_match(tree, &[P, Any, P]), Some(vec![2, 4, 5]));
+        assert_eq!(
+            Rule::find_match(tree, &[P, H1, Any, P]),
+            Some(vec![2, 3, 4, 5])
+        );
+        assert_eq!(
+            Rule::find_match(tree, &[P, Any, H1, P]),
+            Some(vec![1, 2, 3, 5])
+        );
+        assert_eq!(
+            Rule::find_match(tree, &[A, P, Any, H1, P]),
+            Some(vec![0, 1, 2, 3, 5])
+        );
+        assert_eq!(Rule::find_match(tree, &[Em, P, Any, H1, P]), None);
+        assert_eq!(Rule::find_match(tree, &[Ol]), None);
+        assert_eq!(Rule::find_match(tree, &[]), None);
     }
 }
