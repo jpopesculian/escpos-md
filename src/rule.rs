@@ -1,6 +1,7 @@
 use crate::error::{Error, Result};
 use crate::style::StyleTag;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::ops;
 use std::str::FromStr;
 use std::string::String as StdString;
@@ -17,7 +18,7 @@ enum Language<T> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct String<T>(Vec<Language<T>>);
 
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 enum Op<T> {
     Alphabet(T),
     Any,
@@ -183,18 +184,16 @@ where
     }
 }
 
-type DfaEdge<T> = (Op<T>, NodeSet);
-
 #[derive(Debug, Clone)]
 struct Dfa<T> {
-    nodes: HashMap<NodeSet, Vec<DfaEdge<T>>>,
+    nodes: HashMap<NodeSet, HashMap<Op<T>, NodeSet>>,
     start: NodeSet,
     accepting_idx: usize,
 }
 
 impl<T> Dfa<T>
 where
-    T: Ord + Clone + PartialEq,
+    T: Ord + Clone + PartialEq + Hash,
 {
     fn from_nfa(nfa: &Nfa<T>) -> Self {
         let epsilon_closures = nfa.epsilon_closures();
@@ -212,7 +211,7 @@ where
                 .cloned()
                 .collect::<Set<_>>();
             // collect edges
-            let mut edges = Vec::new();
+            let mut edges = HashMap::new();
             // for each opeartion get possible node set
             for op in ops.iter() {
                 let mut d_node_set = Set::new();
@@ -232,15 +231,27 @@ where
                 if !explored_nodes.contains(&d_node_set) {
                     unexplored_nodes.insert(d_node_set.clone());
                 }
-                edges.push((op.clone(), d_node_set))
+                edges.insert(op.clone(), d_node_set);
             }
-            nodes.insert(node_set, edges);
+            nodes.insert(node_set, edges.into_iter().collect());
         }
         Self {
             nodes,
             start,
             accepting_idx: nfa.end,
         }
+    }
+
+    fn start(&self) -> &NodeSet {
+        &self.start
+    }
+
+    fn transition(&self, state: &NodeSet, op: &Op<T>) -> Option<&NodeSet> {
+        self.nodes.get(state)?.get(op)
+    }
+
+    fn is_accepting(&self, state: &NodeSet) -> bool {
+        state.contains(&self.accepting_idx)
     }
 }
 
@@ -407,10 +418,15 @@ mod tests {
             let state_c: NodeSet = vec![4].into();
             nodes.insert(
                 state_a.clone(),
-                vec![(Op::Begin, state_b.clone()), (Op::End, state_b.clone())],
+                vec![(Op::Begin, state_b.clone()), (Op::End, state_b.clone())]
+                    .into_iter()
+                    .collect(),
             );
-            nodes.insert(state_b, vec![(Op::Any, state_c.clone())]);
-            nodes.insert(state_c, vec![]);
+            nodes.insert(
+                state_b,
+                vec![(Op::Any, state_c.clone())].into_iter().collect(),
+            );
+            nodes.insert(state_c, HashMap::new());
             Dfa {
                 nodes,
                 start: state_a,
@@ -445,13 +461,20 @@ mod tests {
                     (Op::Any, state_b.clone()),
                     (Op::Begin, state_a.clone()),
                     (Op::End, state_c.clone()),
-                ],
+                ]
+                .into_iter()
+                .collect(),
             );
             nodes.insert(
                 state_b.clone(),
-                vec![(Op::Any, state_b.clone()), (Op::End, state_c.clone())],
+                vec![(Op::Any, state_b.clone()), (Op::End, state_c.clone())]
+                    .into_iter()
+                    .collect(),
             );
-            nodes.insert(state_c.clone(), vec![(Op::End, state_c.clone())]);
+            nodes.insert(
+                state_c.clone(),
+                vec![(Op::End, state_c.clone())].into_iter().collect(),
+            );
             Dfa {
                 nodes,
                 start: state_a,
