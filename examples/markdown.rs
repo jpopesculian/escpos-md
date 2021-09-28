@@ -1,3 +1,6 @@
+use escpos_md::{MarkdownParser, MarkdownParserOptions, PrinterConfig, Result};
+use std::io;
+
 const TEST_MD: &str = r#"
 # Heading 1
 
@@ -5,7 +8,12 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec bibendum, turpis 
 
 ## Heading 2
 
-This is a paragraph with a *bold value* as well as an _emphasized value_ and a ~strikethrough~ value
+This is a paragraph with a __bold value__ as well as an _emphasized value_
+and a ~~strikethrough~~ value and a `code value` and
+the whole thing is split\
+with a hard break and then a horizontal rule
+
+---
 
 This is an unordered list
 
@@ -38,7 +46,9 @@ This is something a little bigger
     Maybe with some weird alignments
 ```
 
-## Heading 5
+##### Heading 5
+
+###### Heading 6
 
 And then there's also some block quotes
 
@@ -50,4 +60,14 @@ And of course an image
 ![lena](./examples/lena.jpg "With explanation")
 "#;
 
-fn main() {}
+fn main() -> Result<()> {
+    let mut options = MarkdownParserOptions::empty();
+    options.insert(MarkdownParserOptions::ENABLE_STRIKETHROUGH);
+    let parser = MarkdownParser::new_ext(TEST_MD, options);
+    PrinterConfig::tm_t20ii()
+        .build(io::stdout())?
+        .reset()?
+        .markdown(parser, &Default::default())?
+        .cut()?;
+    Ok(())
+}

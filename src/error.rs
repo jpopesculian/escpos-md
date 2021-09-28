@@ -6,6 +6,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("Could not convert string to CP437")]
     Cp437(codepage_437::Cp437Error),
+    #[error(transparent)]
+    Image(#[from] image::ImageError),
     #[error("Image scale must be greater than 0 and less than or equal to 1")]
     InvalidImageScale,
     #[error("Character magnification must greater than 0 and less than or equal to 8")]
@@ -16,14 +18,14 @@ pub enum Error {
     UnsupportedTag(pulldown_cmark::Tag<'static>),
     #[error("Misaligned Markdown Tag: {:?}", _0)]
     UnexpectedTag(pulldown_cmark::Tag<'static>),
-    #[error("Empty render tree")]
-    EmptyRenderTree,
     #[error("Invalid rule tag: {}", _0)]
     InvalidRuleTag(String),
     #[error("Dangling direct child modifier '>'")]
     DanglingDirectChild,
     #[error("Empty rule string")]
     EmptyRuleString,
+    #[error("Markdown Event unimplemented: {:?}", _0)]
+    MarkdownEventUnimplemented(pulldown_cmark::Event<'static>),
 }
 
 impl From<codepage_437::IntoCp437Error> for Error {

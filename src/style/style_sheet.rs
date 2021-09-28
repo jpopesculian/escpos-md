@@ -3,6 +3,7 @@ use super::style_tag::StyleTag;
 use crate::command::{CharMagnification, Font, Justification, UnderlineThickness};
 use crate::config::default::DEFAULT_CHAR_SPACING;
 use crate::error::Result;
+use crate::markdown::TagState;
 use crate::{Printer, PrinterDevice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +47,11 @@ where
             .white_black_reverse(style.white_black_reverse)?;
         Ok(self)
     }
-    pub(crate) fn begin_block_style(&mut self, style: &Style) -> Result<&mut Self> {
+    pub(crate) fn begin_block_style(
+        &mut self,
+        style: &Style,
+        tag_state: Option<&TagState>,
+    ) -> Result<&mut Self> {
         if matches!(style.display, Display::Block) {
             self.justification(style.justification)?
                 .feed_paper(style.margin_top)?;
@@ -55,8 +60,14 @@ where
                 self.left_margin(new_left_margin)?;
             }
         }
+        eprintln!("{:?}", tag_state);
         if !style.prefix.is_empty() {
-            self.print(&style.prefix)?;
+            let prefix = if let Some(num) = tag_state.and_then(|state| state.num()) {
+                style.prefix.replace("{num}", &num.to_string())
+            } else {
+                style.prefix.clone()
+            };
+            self.print(prefix)?;
         }
         Ok(self)
     }
@@ -205,16 +216,6 @@ impl Default for StyleSheet {
                 )
                 .unwrap();
                 this.push(
-                    "h1",
-                    RelativeStyle {
-                        font_width: Some(3),
-                        font_height: Some(3),
-                        bold: Some(true),
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
-                this.push(
                     "ul ul, ul ol, ol ol, ol ul",
                     RelativeStyle {
                         margin_top: Some(0),
@@ -249,6 +250,23 @@ impl Default for StyleSheet {
                 )
                 .unwrap();
                 this.push(
+                    "ol > li",
+                    RelativeStyle {
+                        prefix: Some("{num}. ".into()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "a",
+                    RelativeStyle {
+                        display: Some(Display::Inline),
+                        underline: Some(UnderlineThickness::OneDot),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
                     "strong",
                     RelativeStyle {
                         display: Some(Display::Inline),
@@ -261,7 +279,117 @@ impl Default for StyleSheet {
                     "em",
                     RelativeStyle {
                         display: Some(Display::Inline),
-                        underline: Some(UnderlineThickness::OneDot),
+                        underline: Some(UnderlineThickness::TwoDot),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "strikethrough",
+                    RelativeStyle {
+                        display: Some(Display::Inline),
+                        white_black_reverse: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "code",
+                    RelativeStyle {
+                        display: Some(Display::Inline),
+                        font: Some(Font::FontB),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "codeblock",
+                    RelativeStyle {
+                        font: Some(Font::FontB),
+                        split_words: Some(false),
+                        margin_top: Some(80),
+                        margin_bottom: Some(20),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "blockquote",
+                    RelativeStyle {
+                        margin_left: Some(28),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "img",
+                    RelativeStyle {
+                        margin_top: Some(0),
+                        justification: Some(Justification::Center),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "imgcaption",
+                    RelativeStyle {
+                        margin_top: Some(30),
+                        justification: Some(Justification::Center),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "hr",
+                    RelativeStyle {
+                        char_spacing: Some(0),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "h1",
+                    RelativeStyle {
+                        font_width: Some(3),
+                        font_height: Some(3),
+                        bold: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "h2",
+                    RelativeStyle {
+                        font_width: Some(3),
+                        font_height: Some(2),
+                        bold: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "h3",
+                    RelativeStyle {
+                        font_width: Some(2),
+                        font_height: Some(2),
+                        bold: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "h4",
+                    RelativeStyle {
+                        font_width: Some(2),
+                        bold: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                this.push(
+                    "h5",
+                    RelativeStyle {
+                        bold: Some(true),
                         ..Default::default()
                     },
                 )

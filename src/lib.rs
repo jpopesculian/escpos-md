@@ -11,11 +11,12 @@ mod error;
 pub mod instruction;
 mod markdown;
 mod printer;
+mod pulldown_cmark_ext;
 mod split_words;
 pub mod style;
-mod tag_ext;
 
 pub use config::PrinterConfig;
 pub use error::{Error, Result};
+pub use markdown::MarkdownRenderOptions;
 pub use printer::{Printer, PrinterDevice};
 pub use pulldown_cmark::{Options as MarkdownParserOptions, Parser as MarkdownParser};

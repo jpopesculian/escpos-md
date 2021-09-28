@@ -71,12 +71,12 @@ impl<D> Printer<D> {
         })
     }
 
-    fn calc_char_size(&self) -> usize {
+    pub(crate) fn calc_char_size(&self) -> usize {
         (self.config.font_widths.get(&self.state.font) + self.state.char_spacing as usize)
             * self.state.char_magnification.width() as usize
     }
 
-    fn printable_width(&self) -> usize {
+    pub(crate) fn printable_width(&self) -> usize {
         self.config.width - (self.state.left_margin as usize).min(self.config.width)
     }
 }
