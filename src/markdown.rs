@@ -7,8 +7,8 @@ use pulldown_cmark::{Event, Tag};
 
 #[derive(Debug, Clone, Default)]
 pub struct MarkdownRenderOptions {
-    styles: StyleSheet,
-    image: ImageOptions,
+    pub styles: StyleSheet,
+    pub image: ImageOptions,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -90,7 +90,6 @@ where
     {
         let mut state = RendererState::default();
         for event in iter {
-            eprintln!("=> {:?}", event);
             match event {
                 Event::Start(tag) => {
                     state.push_tag(tag.clone())?;

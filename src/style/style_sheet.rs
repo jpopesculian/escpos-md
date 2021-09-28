@@ -60,7 +60,6 @@ where
                 self.left_margin(new_left_margin)?;
             }
         }
-        eprintln!("{:?}", tag_state);
         if !style.prefix.is_empty() {
             let prefix = if let Some(num) = tag_state.and_then(|state| state.num()) {
                 style.prefix.replace("{num}", &num.to_string())
@@ -188,7 +187,7 @@ impl StyleSheet {
         Ok(())
     }
 
-    pub fn get(&self, tree: &[StyleTag]) -> Style {
+    pub(crate) fn get(&self, tree: &[StyleTag]) -> Style {
         let mut style = self.base.clone();
         for (rule, rel_style) in &self.rules {
             if rule.matches_loose(tree) {
