@@ -22,6 +22,8 @@ pub enum Error {
     InvalidRuleTag(String),
     #[error("Dangling direct child modifier '>'")]
     DanglingDirectChild,
+    #[error("Empty rule string")]
+    EmptyRuleString,
 }
 
 impl From<codepage_437::IntoCp437Error> for Error {
