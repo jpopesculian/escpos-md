@@ -9,6 +9,7 @@ mod error;
 pub mod instruction;
 mod markdown;
 mod printer;
+mod rule;
 mod split_words;
 pub mod style;
 mod tag_ext;

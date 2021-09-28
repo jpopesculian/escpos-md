@@ -43,12 +43,15 @@ where
                 Event::Start(tag) => {
                     state.push_tag(tag.clone());
                     let style = styles.get(&state.style_tags()?);
-                    self.begin_style(&style)?;
+                    self.font_style(&style)?;
+                    self.begin_block_style(&style)?;
                 }
                 Event::End(tag) => {
                     let style = styles.get(&state.style_tags()?);
-                    self.end_style(&style)?;
+                    self.end_block_style(&style)?;
                     state.pop_tag(&tag)?;
+                    let style = styles.get(&state.style_tags()?);
+                    self.font_style(&style)?;
                 }
                 Event::Text(text) => {
                     self.print(text)?;
@@ -57,9 +60,14 @@ where
                     let mut style_tags = state.style_tags()?;
                     style_tags.push(StyleTag::Code);
                     let style = styles.get(&style_tags);
-                    self.begin_style(&style)?;
+                    self.font_style(&style)?;
+                    self.begin_block_style(&style)?;
+
                     self.print(text)?;
-                    self.end_style(&style)?;
+
+                    self.end_block_style(&style)?;
+                    let style = styles.get(&state.style_tags()?);
+                    self.font_style(&style)?;
                 }
                 _ => unimplemented!(),
             }

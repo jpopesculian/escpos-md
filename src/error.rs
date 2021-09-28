@@ -16,8 +16,12 @@ pub enum Error {
     UnsupportedTag(pulldown_cmark::Tag<'static>),
     #[error("Misaligned Markdown Tag: {:?}", _0)]
     UnexpectedTag(pulldown_cmark::Tag<'static>),
-    #[error("Empty Render Tree")]
+    #[error("Empty render tree")]
     EmptyRenderTree,
+    #[error("Invalid rule tag: {}", _0)]
+    InvalidRuleTag(String),
+    #[error("Dangling direct child modifier '>'")]
+    DanglingDirectChild,
 }
 
 impl From<codepage_437::IntoCp437Error> for Error {

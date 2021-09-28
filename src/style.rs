@@ -18,11 +18,11 @@ pub struct Style {
     pub char_spacing: usize,
     pub font: Font,
     pub line_spacing: Option<usize>,
-    pub prefix: String,
     pub split_words: bool,
     pub underline: UnderlineThickness,
     pub white_black_reverse: bool,
     // block styles
+    pub prefix: String,
     pub justification: Justification,
     pub margin_left: usize,
     pub margin_bottom: usize,
@@ -33,7 +33,7 @@ impl<D> Printer<D>
 where
     D: PrinterDevice,
 {
-    pub(crate) fn begin_style(&mut self, style: &Style) -> Result<&mut Self> {
+    pub(crate) fn font_style(&mut self, style: &Style) -> Result<&mut Self> {
         self.bold(style.bold)?
             .char_size(style.char_magnification)?
             .char_spacing(style.char_spacing)?
@@ -42,6 +42,9 @@ where
             .split_words(style.split_words)?
             .underline(style.underline)?
             .white_black_reverse(style.white_black_reverse)?;
+        Ok(self)
+    }
+    pub(crate) fn begin_block_style(&mut self, style: &Style) -> Result<&mut Self> {
         if matches!(style.display, Display::Block) {
             self.justification(style.justification)?
                 .feed_paper(style.margin_top)?;
@@ -56,7 +59,7 @@ where
         Ok(self)
     }
 
-    pub(crate) fn end_style(&mut self, style: &Style) -> Result<&mut Self> {
+    pub(crate) fn end_block_style(&mut self, style: &Style) -> Result<&mut Self> {
         if matches!(style.display, Display::Block) {
             self.feed_paper(style.margin_bottom)?;
             if style.margin_left != 0 {
@@ -123,7 +126,6 @@ impl Style {
         apply_fields!(
             style -> self:
             font,
-            prefix,
             underline,
             bold,
             white_black_reverse,
@@ -144,6 +146,7 @@ impl Style {
         apply_fields!(
             style -> self:
             display,
+            prefix,
             justification,
             margin_top,
             margin_bottom,
@@ -325,6 +328,7 @@ impl Default for StyleSheet {
         this.push(
             Rule::new([Strong]),
             RelativeStyle {
+                display: Some(Display::Inline),
                 bold: Some(true),
                 ..Default::default()
             },
@@ -332,6 +336,7 @@ impl Default for StyleSheet {
         this.push(
             Rule::new([Em]),
             RelativeStyle {
+                display: Some(Display::Inline),
                 underline: Some(UnderlineThickness::OneDot),
                 ..Default::default()
             },
