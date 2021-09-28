@@ -1,0 +1,15 @@
+[package]
+name = "escpos-md-cli"
+description = "Markdown for ESC/POS CLI"
+repository = "https://github.com/jpopesculian/escpos-md"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[[bin]]
+name = "escposmd"
+path = "src/main.rs"
+
+[dependencies]
+clap = "3.0.0-beta.4"
+escpos-md = { path = "../lib" }
