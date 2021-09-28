@@ -1,5 +1,5 @@
+use super::style_tag::StyleTag;
 use crate::error::{Error, Result};
-use crate::style::StyleTag;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops;
@@ -338,6 +338,7 @@ where
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Rule {
     loose: Dfa<StyleTag>,
     exact: Dfa<StyleTag>,

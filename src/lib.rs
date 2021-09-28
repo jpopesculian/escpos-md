@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate thiserror;
+#[macro_use]
+extern crate lazy_static;
 
 pub extern crate pulldown_cmark;
 
@@ -9,7 +11,6 @@ mod error;
 pub mod instruction;
 mod markdown;
 mod printer;
-mod rule;
 mod split_words;
 pub mod style;
 mod tag_ext;
