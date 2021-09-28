@@ -10,39 +10,11 @@ pub trait Enumerable: Sized {
     fn enumerate_all() -> Vec<Self>;
 }
 
-impl Enumerable for StyleTag {
-    fn enumerate_all() -> Vec<Self> {
-        use StyleTag::*;
-        vec![
-            Any,
-            P,
-            H1,
-            H2,
-            H3,
-            H4,
-            H5,
-            Blockquote,
-            Code,
-            Codeblock,
-            Ul,
-            Ol,
-            Li,
-            Em,
-            Strong,
-            Strikethrough,
-            A,
-            Img,
-            ImgCaption,
-        ]
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Language<T> {
     Alphabet(T),
     Any,
     Begin,
-    End,
     KleenStar,
 }
 
@@ -211,7 +183,6 @@ impl<T> Nfa<T> {
             match symbol {
                 Language::Any => stack.push(Self::from_op(Op::Any)),
                 Language::Begin => stack.push(Self::from_op(Op::Begin)),
-                Language::End => stack.push(Self::from_op(Op::End)),
                 Language::Alphabet(t) => stack.push(Self::from_op(Op::Alphabet(t))),
                 Language::KleenStar => {
                     stack
@@ -275,12 +246,6 @@ impl<T> Nfa<T> {
             out.push(explored_nodes)
         }
         out
-    }
-    fn ops_for_node(&self, idx: usize) -> Vec<&Op<T>> {
-        self.nodes[idx]
-            .iter()
-            .filter_map(|(op, _)| op.as_ref())
-            .collect()
     }
 }
 
@@ -391,11 +356,11 @@ impl Rule {
         }
     }
 
-    fn matches_loose(&self, tree: &[StyleTag]) -> bool {
+    pub fn matches_loose(&self, tree: &[StyleTag]) -> bool {
         Self::matches_dfa(&self.loose, tree)
     }
 
-    fn matches_exact(&self, tree: &[StyleTag]) -> bool {
+    pub fn matches_exact(&self, tree: &[StyleTag]) -> bool {
         Self::matches_dfa(&self.exact, tree)
     }
 
@@ -420,6 +385,18 @@ impl Rule {
             .chain(tree.iter().map(|tag| Op::Alphabet(tag.clone())))
             .chain(Some(Op::End))
     }
+}
+
+pub fn parse_rules(string: impl AsRef<str>) -> Result<Vec<Rule>> {
+    string
+        .as_ref()
+        .split(",")
+        .map(|string| {
+            Ok(Rule::from_loose_nfa(&Nfa::from_string(
+                string.parse::<String<StyleTag>>()?,
+            )?))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -586,14 +563,14 @@ mod tests {
     #[test]
     fn rule_matches() -> Result<()> {
         use StyleTag::*;
-        let rule = Rule::from_loose_nfa(&Nfa::from_string("> a".parse()?)?);
+        let rule = parse_rules("> a")?.pop().unwrap();
         assert!(rule.matches_loose(&[A]));
         assert!(rule.matches_exact(&[A]));
         assert!(rule.matches_loose(&[A, P]));
         assert!(!rule.matches_exact(&[A, P]));
         assert!(!rule.matches_loose(&[P, A]));
         assert!(!rule.matches_exact(&[P, A]));
-        let rule = Rule::from_loose_nfa(&Nfa::from_string("ul > li em".parse()?)?);
+        let rule = parse_rules("ul > li em")?.pop().unwrap();
         assert!(rule.matches_loose(&[Ul, Li, Em]));
         assert!(rule.matches_exact(&[Ul, Li, Em]));
         assert!(rule.matches_loose(&[Ul, Li, Em, A]));

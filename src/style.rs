@@ -1,6 +1,7 @@
 use crate::command::{CharMagnification, Font, Justification, UnderlineThickness};
 use crate::config::default::DEFAULT_CHAR_SPACING;
 use crate::error::{Error, Result};
+use crate::rule::Enumerable;
 use crate::{Printer, PrinterDevice};
 use std::str::FromStr;
 
@@ -208,6 +209,33 @@ impl FromStr for StyleTag {
     }
 }
 
+impl Enumerable for StyleTag {
+    fn enumerate_all() -> Vec<Self> {
+        use StyleTag::*;
+        vec![
+            Any,
+            P,
+            H1,
+            H2,
+            H3,
+            H4,
+            H5,
+            Blockquote,
+            Code,
+            Codeblock,
+            Ul,
+            Ol,
+            Li,
+            Em,
+            Strong,
+            Strikethrough,
+            A,
+            Img,
+            ImgCaption,
+        ]
+    }
+}
+
 impl StyleTag {
     pub fn matches(&self, other: &Self) -> bool {
         self == other || matches!(other, Self::Any) || matches!(self, Self::Any)
@@ -371,6 +399,40 @@ impl Default for StyleSheet {
             },
         );
         this
+    }
+}
+
+pub struct StyleSheet2 {
+    base: Style,
+    rules: Vec<(crate::rule::Rule, RelativeStyle)>,
+}
+
+impl StyleSheet2 {
+    pub fn new(base: Style) -> Self {
+        Self {
+            base,
+            rules: Vec::new(),
+        }
+    }
+
+    pub fn push(&mut self, rule: impl AsRef<str>, style: RelativeStyle) -> Result<()> {
+        for rule in crate::rule::parse_rules(rule)? {
+            self.rules.push((rule, style.clone()));
+        }
+        Ok(())
+    }
+
+    pub fn get(&self, tree: &[StyleTag]) -> Style {
+        let mut style = self.base.clone();
+        for (rule, rel_style) in &self.rules {
+            if rule.matches_loose(tree) {
+                style.apply_font(rel_style);
+                if rule.matches_exact(tree) {
+                    style.apply_block(rel_style);
+                }
+            }
+        }
+        style
     }
 }
 
