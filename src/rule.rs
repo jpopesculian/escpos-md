@@ -6,6 +6,37 @@ use std::ops;
 use std::str::FromStr;
 use std::string::String as StdString;
 
+pub trait Enumerable: Sized {
+    fn enumerate_all() -> Vec<Self>;
+}
+
+impl Enumerable for StyleTag {
+    fn enumerate_all() -> Vec<Self> {
+        use StyleTag::*;
+        vec![
+            Any,
+            P,
+            H1,
+            H2,
+            H3,
+            H4,
+            H5,
+            Blockquote,
+            Code,
+            Codeblock,
+            Ul,
+            Ol,
+            Li,
+            Em,
+            Strong,
+            Strikethrough,
+            A,
+            Img,
+            ImgCaption,
+        ]
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Language<T> {
     Alphabet(T),
@@ -18,12 +49,97 @@ enum Language<T> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct String<T>(Vec<Language<T>>);
 
+impl FromStr for String<StyleTag> {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut out = vec![Language::Begin];
+        let mut is_direct_child = false;
+        let mut current_word = StdString::new();
+        for ch in s.chars() {
+            if ch.is_whitespace() {
+                if current_word.is_empty() {
+                    continue;
+                } else {
+                    if current_word == ">" {
+                        is_direct_child = true;
+                    } else {
+                        if !is_direct_child {
+                            out.push(Language::Any);
+                            out.push(Language::KleenStar);
+                        } else {
+                            is_direct_child = false;
+                        }
+                        match current_word.as_str() {
+                            "*" => out.push(Language::Any),
+                            tag => out.push(Language::Alphabet(tag.parse()?)),
+                        }
+                    }
+                    current_word = StdString::new();
+                }
+            } else {
+                current_word.push(ch)
+            }
+        }
+        if !current_word.is_empty() {
+            if current_word == ">" {
+                return Err(Error::DanglingDirectChild);
+            } else {
+                if !is_direct_child {
+                    out.push(Language::Any);
+                    out.push(Language::KleenStar);
+                }
+                match current_word.as_str() {
+                    "*" => out.push(Language::Any),
+                    tag => out.push(Language::Alphabet(tag.parse()?)),
+                }
+            }
+        }
+        Ok(Self(out))
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 enum Op<T> {
     Alphabet(T),
     Any,
     Begin,
     End,
+}
+
+impl<T> Op<T>
+where
+    T: PartialEq,
+{
+    fn is_satisfied_by(&self, other: &Op<T>) -> bool {
+        match self {
+            Op::Alphabet(a) => match other {
+                Op::Alphabet(b) => a == b,
+                _ => false,
+            },
+            Op::Any => match other {
+                Op::Alphabet(_) => true,
+                _ => false,
+            },
+            Op::Begin => matches!(other, Op::Begin),
+            Op::End => matches!(other, Op::End),
+        }
+    }
+}
+
+impl<T> Enumerable for Op<T>
+where
+    T: Enumerable,
+{
+    fn enumerate_all() -> Vec<Self> {
+        let mut ops = T::enumerate_all()
+            .into_iter()
+            .map(|t| Op::Alphabet(t))
+            .collect::<Vec<_>>();
+        ops.push(Op::Any);
+        ops.push(Op::Begin);
+        ops.push(Op::End);
+        ops
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -176,9 +292,13 @@ where
         self.nodes[idx]
             .iter()
             .filter_map(|(link_op, node_idx)| {
-                link_op
-                    .as_ref()
-                    .and_then(|link_op| if link_op == op { Some(*node_idx) } else { None })
+                link_op.as_ref().and_then(|link_op| {
+                    if link_op.is_satisfied_by(op) {
+                        Some(*node_idx)
+                    } else {
+                        None
+                    }
+                })
             })
             .collect()
     }
@@ -193,9 +313,10 @@ struct Dfa<T> {
 
 impl<T> Dfa<T>
 where
-    T: Ord + Clone + PartialEq + Hash,
+    T: Ord + Clone + PartialEq + Hash + Enumerable,
 {
     fn from_nfa(nfa: &Nfa<T>) -> Self {
+        let ops = Op::enumerate_all();
         let epsilon_closures = nfa.epsilon_closures();
         let start = epsilon_closures[nfa.start].clone();
         let mut nodes = HashMap::new();
@@ -204,12 +325,6 @@ where
         unexplored_nodes.insert(start.clone());
         while let Some(node_set) = unexplored_nodes.pop() {
             explored_nodes.insert(node_set.clone());
-            // get valid operations from node
-            let ops = node_set
-                .iter()
-                .flat_map(|idx| nfa.ops_for_node(*idx))
-                .cloned()
-                .collect::<Set<_>>();
             // collect edges
             let mut edges = HashMap::new();
             // for each opeartion get possible node set
@@ -217,6 +332,9 @@ where
                 let mut d_node_set = Set::new();
                 for idx in node_set.iter() {
                     d_node_set.merge(nfa.transition(*idx, op));
+                }
+                if d_node_set.is_empty() {
+                    continue;
                 }
                 // extend node set by epsilon closures
                 d_node_set = d_node_set
@@ -255,80 +373,52 @@ where
     }
 }
 
-impl FromStr for StyleTag {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        use StyleTag::*;
-        Ok(match s {
-            "p" => P,
-            "h1" => H1,
-            "h2" => H2,
-            "h3" => H3,
-            "h4" => H4,
-            "h5" => H5,
-            "blockquote" => Blockquote,
-            "code" => Code,
-            "codeblock" => Codeblock,
-            "ul" => Ul,
-            "ol" => Ol,
-            "li" => Li,
-            "em" => Em,
-            "strong" => Strong,
-            "strikethrough" => Strikethrough,
-            "a" => A,
-            "img" => Img,
-            "imgcaption" => ImgCaption,
-            _ => return Err(Error::InvalidRuleTag(s.to_string())),
-        })
-    }
+pub struct Rule {
+    loose: Dfa<StyleTag>,
+    exact: Dfa<StyleTag>,
 }
 
-impl FromStr for String<StyleTag> {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut out = vec![Language::Begin];
-        let mut is_direct_child = false;
-        let mut current_word = StdString::new();
-        for ch in s.chars() {
-            if ch.is_whitespace() {
-                if current_word.is_empty() {
-                    continue;
-                } else {
-                    if current_word == ">" {
-                        is_direct_child = true;
-                    } else {
-                        if !is_direct_child {
-                            out.push(Language::Any);
-                            out.push(Language::KleenStar);
-                        } else {
-                            is_direct_child = false;
-                        }
-                        match current_word.as_str() {
-                            "*" => out.push(Language::Any),
-                            tag => out.push(Language::Alphabet(tag.parse()?)),
-                        }
-                    }
-                    current_word = StdString::new();
-                }
+impl Rule {
+    fn from_loose_nfa(loose_nfa: &Nfa<StyleTag>) -> Self {
+        let exact_nfa = {
+            let mut nfa = loose_nfa.clone();
+            nfa.concat(Nfa::from_op(Op::End));
+            nfa
+        };
+        Self {
+            loose: Dfa::from_nfa(loose_nfa),
+            exact: Dfa::from_nfa(&exact_nfa),
+        }
+    }
+
+    fn matches_loose(&self, tree: &[StyleTag]) -> bool {
+        Self::matches_dfa(&self.loose, tree)
+    }
+
+    fn matches_exact(&self, tree: &[StyleTag]) -> bool {
+        Self::matches_dfa(&self.exact, tree)
+    }
+
+    fn matches_dfa(dfa: &Dfa<StyleTag>, tree: &[StyleTag]) -> bool {
+        let mut state = Some(dfa.start());
+        let mut ops = Self::ops(tree);
+        while let Some(node_set) = state {
+            if dfa.is_accepting(node_set) {
+                return true;
+            }
+            if let Some(op) = ops.next() {
+                state = dfa.transition(node_set, &op);
             } else {
-                current_word.push(ch)
+                break;
             }
         }
-        if !current_word.is_empty() {
-            if current_word == ">" {
-                return Err(Error::DanglingDirectChild);
-            } else {
-                if !is_direct_child {
-                    out.push(Language::Any);
-                    out.push(Language::KleenStar);
-                }
-                match current_word.as_str() {
-                    "*" => out.push(Language::Any),
-                    tag => out.push(Language::Alphabet(tag.parse()?)),
-                }
-            }
-        }
-        Ok(Self(out))
+        false
+    }
+
+    fn ops<'a>(tree: &'a [StyleTag]) -> impl Iterator<Item = Op<StyleTag>> + 'a {
+        std::iter::once(Op::Begin)
+            .chain(tree.iter().map(|tag| Op::Alphabet(tag.clone())))
+            .chain(Some(Op::End))
     }
 }
 
@@ -399,19 +489,20 @@ mod tests {
 
     #[test]
     fn nfa_to_dsa_test_1() {
-        let nfa: Nfa<()> = Nfa {
+        use StyleTag::*;
+        let nfa: Nfa<StyleTag> = Nfa {
             nodes: vec![
                 vec![(None, 1), (None, 2)],
                 vec![(Some(Op::Begin), 3)],
                 vec![(Some(Op::End), 3)],
-                vec![(Some(Op::Any), 4)],
+                vec![(Some(Op::Alphabet(A)), 4)],
                 vec![],
             ],
             start: 0,
             end: 4,
         };
         let dfa = Dfa::from_nfa(&nfa);
-        let expected_dfa: Dfa<()> = {
+        let expected_dfa: Dfa<StyleTag> = {
             let mut nodes = HashMap::new();
             let state_a: NodeSet = vec![0, 1, 2].into();
             let state_b: NodeSet = vec![3].into();
@@ -424,7 +515,9 @@ mod tests {
             );
             nodes.insert(
                 state_b,
-                vec![(Op::Any, state_c.clone())].into_iter().collect(),
+                vec![(Op::Alphabet(A), state_c.clone())]
+                    .into_iter()
+                    .collect(),
             );
             nodes.insert(state_c, HashMap::new());
             Dfa {
@@ -440,17 +533,18 @@ mod tests {
 
     #[test]
     fn nfa_to_dsa_test_2() {
-        let nfa: Nfa<()> = Nfa {
+        use StyleTag::*;
+        let nfa: Nfa<StyleTag> = Nfa {
             nodes: vec![
                 vec![(Some(Op::Begin), 0), (None, 1)],
-                vec![(Some(Op::Any), 1), (None, 2)],
+                vec![(Some(Op::Alphabet(A)), 1), (None, 2)],
                 vec![(Some(Op::End), 2)],
             ],
             start: 0,
             end: 2,
         };
         let dfa = Dfa::from_nfa(&nfa);
-        let expected_dfa: Dfa<()> = {
+        let expected_dfa: Dfa<StyleTag> = {
             let mut nodes = HashMap::new();
             let state_a: NodeSet = vec![0, 1, 2].into();
             let state_b: NodeSet = vec![1, 2].into();
@@ -458,7 +552,7 @@ mod tests {
             nodes.insert(
                 state_a.clone(),
                 vec![
-                    (Op::Any, state_b.clone()),
+                    (Op::Alphabet(A), state_b.clone()),
                     (Op::Begin, state_a.clone()),
                     (Op::End, state_c.clone()),
                 ]
@@ -467,9 +561,12 @@ mod tests {
             );
             nodes.insert(
                 state_b.clone(),
-                vec![(Op::Any, state_b.clone()), (Op::End, state_c.clone())]
-                    .into_iter()
-                    .collect(),
+                vec![
+                    (Op::Alphabet(A), state_b.clone()),
+                    (Op::End, state_c.clone()),
+                ]
+                .into_iter()
+                .collect(),
             );
             nodes.insert(
                 state_c.clone(),
@@ -484,6 +581,30 @@ mod tests {
         assert_eq!(dfa.nodes, expected_dfa.nodes);
         assert_eq!(dfa.start, expected_dfa.start);
         assert_eq!(dfa.accepting_idx, expected_dfa.accepting_idx);
+    }
+
+    #[test]
+    fn rule_matches() -> Result<()> {
+        use StyleTag::*;
+        let rule = Rule::from_loose_nfa(&Nfa::from_string("> a".parse()?)?);
+        assert!(rule.matches_loose(&[A]));
+        assert!(rule.matches_exact(&[A]));
+        assert!(rule.matches_loose(&[A, P]));
+        assert!(!rule.matches_exact(&[A, P]));
+        assert!(!rule.matches_loose(&[P, A]));
+        assert!(!rule.matches_exact(&[P, A]));
+        let rule = Rule::from_loose_nfa(&Nfa::from_string("ul > li em".parse()?)?);
+        assert!(rule.matches_loose(&[Ul, Li, Em]));
+        assert!(rule.matches_exact(&[Ul, Li, Em]));
+        assert!(rule.matches_loose(&[Ul, Li, Em, A]));
+        assert!(!rule.matches_exact(&[Ul, Li, Em, A]));
+        assert!(rule.matches_loose(&[P, Ul, Li, Em]));
+        assert!(rule.matches_exact(&[P, Ul, Li, Em]));
+        assert!(!rule.matches_loose(&[P, Ul, A, Em]));
+        assert!(rule.matches_exact(&[P, Ul, Li, A, Em]));
+        assert!(!rule.matches_loose(&[P, Ul, A, Li, Em]));
+        assert!(rule.matches_exact(&[P, Ul, Li, Em, Em]));
+        Ok(())
     }
 
     #[test]

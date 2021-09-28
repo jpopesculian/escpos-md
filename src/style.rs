@@ -1,7 +1,8 @@
 use crate::command::{CharMagnification, Font, Justification, UnderlineThickness};
 use crate::config::default::DEFAULT_CHAR_SPACING;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::{Printer, PrinterDevice};
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Display {
@@ -155,7 +156,7 @@ impl Style {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 #[repr(u8)]
 pub enum StyleTag {
     Any,
@@ -177,6 +178,34 @@ pub enum StyleTag {
     A,
     Img,
     ImgCaption,
+}
+
+impl FromStr for StyleTag {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use StyleTag::*;
+        Ok(match s {
+            "p" => P,
+            "h1" => H1,
+            "h2" => H2,
+            "h3" => H3,
+            "h4" => H4,
+            "h5" => H5,
+            "blockquote" => Blockquote,
+            "code" => Code,
+            "codeblock" => Codeblock,
+            "ul" => Ul,
+            "ol" => Ol,
+            "li" => Li,
+            "em" => Em,
+            "strong" => Strong,
+            "strikethrough" => Strikethrough,
+            "a" => A,
+            "img" => Img,
+            "imgcaption" => ImgCaption,
+            _ => return Err(Error::InvalidRuleTag(s.to_string())),
+        })
+    }
 }
 
 impl StyleTag {
