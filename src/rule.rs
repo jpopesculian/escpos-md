@@ -1,6 +1,7 @@
 use crate::error::{Error, Result};
 use crate::style::StyleTag;
 use std::collections::HashMap;
+use std::ops;
 use std::str::FromStr;
 use std::string::String as StdString;
 
@@ -44,11 +45,15 @@ where
             self.insert(item)
         }
     }
-    fn contains(&self, item: &T) -> bool {
-        self.0.binary_search(&item).is_ok()
-    }
     fn pop(&mut self) -> Option<T> {
         self.0.pop()
+    }
+}
+
+impl<T> ops::Deref for Set<T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -59,6 +64,15 @@ where
     fn from(mut list: Vec<T>) -> Self {
         list.sort();
         Self(list)
+    }
+}
+
+impl<T> FromIterator<T> for Set<T>
+where
+    T: Ord,
+{
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::from(iter.into_iter().collect::<Vec<_>>())
     }
 }
 
@@ -145,14 +159,89 @@ impl<T> Nfa<T> {
         }
         out
     }
+    fn ops_for_node(&self, idx: usize) -> Vec<&Op<T>> {
+        self.nodes[idx]
+            .iter()
+            .filter_map(|(op, _)| op.as_ref())
+            .collect()
+    }
 }
 
-type DfaEdge<T> = (Set<Op<T>>, NodeSet);
+impl<T> Nfa<T>
+where
+    T: PartialEq,
+{
+    fn transition(&self, idx: usize, op: &Op<T>) -> NodeSet {
+        self.nodes[idx]
+            .iter()
+            .filter_map(|(link_op, node_idx)| {
+                link_op
+                    .as_ref()
+                    .and_then(|link_op| if link_op == op { Some(*node_idx) } else { None })
+            })
+            .collect()
+    }
+}
 
+type DfaEdge<T> = (Op<T>, NodeSet);
+
+#[derive(Debug, Clone)]
 struct Dfa<T> {
-    nodes: HashMap<NodeSet, DfaEdge<T>>,
+    nodes: HashMap<NodeSet, Vec<DfaEdge<T>>>,
     start: NodeSet,
-    end: Vec<NodeSet>,
+    accepting_idx: usize,
+}
+
+impl<T> Dfa<T>
+where
+    T: Ord + Clone + PartialEq,
+{
+    fn from_nfa(nfa: &Nfa<T>) -> Self {
+        let epsilon_closures = nfa.epsilon_closures();
+        let start = epsilon_closures[nfa.start].clone();
+        let mut nodes = HashMap::new();
+        let mut unexplored_nodes = Set::new();
+        let mut explored_nodes = Set::new();
+        unexplored_nodes.insert(start.clone());
+        while let Some(node_set) = unexplored_nodes.pop() {
+            explored_nodes.insert(node_set.clone());
+            // get valid operations from node
+            let ops = node_set
+                .iter()
+                .flat_map(|idx| nfa.ops_for_node(*idx))
+                .cloned()
+                .collect::<Set<_>>();
+            // collect edges
+            let mut edges = Vec::new();
+            // for each opeartion get possible node set
+            for op in ops.iter() {
+                let mut d_node_set = Set::new();
+                for idx in node_set.iter() {
+                    d_node_set.merge(nfa.transition(*idx, op));
+                }
+                // extend node set by epsilon closures
+                d_node_set = d_node_set
+                    .iter()
+                    .map(|idx| epsilon_closures[*idx].clone())
+                    .reduce(|mut agg, next| {
+                        agg.merge(next);
+                        agg
+                    })
+                    .unwrap();
+                // if unexplored add node set to the list of states to explore
+                if !explored_nodes.contains(&d_node_set) {
+                    unexplored_nodes.insert(d_node_set.clone());
+                }
+                edges.push((op.clone(), d_node_set))
+            }
+            nodes.insert(node_set, edges);
+        }
+        Self {
+            nodes,
+            start,
+            accepting_idx: nfa.end,
+        }
+    }
 }
 
 impl FromStr for StyleTag {
@@ -284,16 +373,94 @@ mod tests {
             n
         };
         nfa.concat(any_star);
-        let expected_epsilon = vec![
-            vec![0].into(),
-            vec![1, 2, 4, 5].into(),
-            vec![2].into(),
-            vec![2, 3, 4].into(),
-            vec![4].into(),
-            vec![2, 4, 5].into(),
-        ];
+        assert_eq!(
+            nfa.epsilon_closures(),
+            vec![
+                vec![0].into(),
+                vec![1, 2, 4, 5].into(),
+                vec![2].into(),
+                vec![2, 3, 4].into(),
+                vec![4].into(),
+                vec![2, 4, 5].into(),
+            ]
+        );
+    }
 
-        assert_eq!(nfa.epsilon_closures(), expected_epsilon);
+    #[test]
+    fn nfa_to_dsa_test_1() {
+        let nfa: Nfa<()> = Nfa {
+            nodes: vec![
+                vec![(None, 1), (None, 2)],
+                vec![(Some(Op::Begin), 3)],
+                vec![(Some(Op::End), 3)],
+                vec![(Some(Op::Any), 4)],
+                vec![],
+            ],
+            start: 0,
+            end: 4,
+        };
+        let dfa = Dfa::from_nfa(&nfa);
+        let expected_dfa: Dfa<()> = {
+            let mut nodes = HashMap::new();
+            let state_a: NodeSet = vec![0, 1, 2].into();
+            let state_b: NodeSet = vec![3].into();
+            let state_c: NodeSet = vec![4].into();
+            nodes.insert(
+                state_a.clone(),
+                vec![(Op::Begin, state_b.clone()), (Op::End, state_b.clone())],
+            );
+            nodes.insert(state_b, vec![(Op::Any, state_c.clone())]);
+            nodes.insert(state_c, vec![]);
+            Dfa {
+                nodes,
+                start: state_a,
+                accepting_idx: 4,
+            }
+        };
+        assert_eq!(dfa.nodes, expected_dfa.nodes);
+        assert_eq!(dfa.start, expected_dfa.start);
+        assert_eq!(dfa.accepting_idx, expected_dfa.accepting_idx);
+    }
+
+    #[test]
+    fn nfa_to_dsa_test_2() {
+        let nfa: Nfa<()> = Nfa {
+            nodes: vec![
+                vec![(Some(Op::Begin), 0), (None, 1)],
+                vec![(Some(Op::Any), 1), (None, 2)],
+                vec![(Some(Op::End), 2)],
+            ],
+            start: 0,
+            end: 2,
+        };
+        let dfa = Dfa::from_nfa(&nfa);
+        let expected_dfa: Dfa<()> = {
+            let mut nodes = HashMap::new();
+            let state_a: NodeSet = vec![0, 1, 2].into();
+            let state_b: NodeSet = vec![1, 2].into();
+            let state_c: NodeSet = vec![2].into();
+            nodes.insert(
+                state_a.clone(),
+                vec![
+                    (Op::Any, state_b.clone()),
+                    (Op::Begin, state_a.clone()),
+                    (Op::End, state_c.clone()),
+                ],
+            );
+            nodes.insert(
+                state_b.clone(),
+                vec![(Op::Any, state_b.clone()), (Op::End, state_c.clone())],
+            );
+            nodes.insert(state_c.clone(), vec![(Op::End, state_c.clone())]);
+            Dfa {
+                nodes,
+                start: state_a,
+                accepting_idx: 2,
+            }
+        };
+        assert_eq!(dfa.nodes, expected_dfa.nodes);
+        assert_eq!(dfa.start, expected_dfa.start);
+        assert_eq!(dfa.accepting_idx, expected_dfa.accepting_idx);
     }
 
     #[test]
