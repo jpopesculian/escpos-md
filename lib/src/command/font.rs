@@ -1,5 +1,5 @@
 /// Common fonts used in thermal printers
-#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+#[derive(Clone, Debug, Copy, Eq, PartialEq, Deserialize)]
 #[repr(u8)]
 pub enum Font {
     FontA,

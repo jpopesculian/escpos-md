@@ -6,7 +6,7 @@ use crate::error::Result;
 use crate::markdown::TagState;
 use crate::{Printer, PrinterDevice};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum Display {
     Inline,
     Block,
@@ -104,7 +104,7 @@ impl Default for Style {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Deserialize)]
 pub struct RelativeStyle {
     pub display: Option<Display>,
     pub prefix: Option<String>,

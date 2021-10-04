@@ -39,7 +39,7 @@ impl Default for ImageOptions {
         Self {
             bit_map_algorithm: BitMapAlgorithm::Dithering,
             scale: 1.,
-            filter_type: image::imageops::FilterType::Gaussian,
+            filter_type: image::imageops::FilterType::Lanczos3,
         }
     }
 }

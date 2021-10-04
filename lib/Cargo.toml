@@ -11,4 +11,5 @@ codepage-437 = "0.1.0"
 image = "0.23.14"
 lazy_static = "1.4.0"
 pulldown-cmark = "0.8.0"
+serde = { version = "1.0.130", features = ["derive"] }
 thiserror = "1.0.29"

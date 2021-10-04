@@ -8,21 +8,21 @@ pub use charset::Charset;
 pub use code_table::CodeTable;
 pub use font::Font;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize)]
 #[repr(u8)]
 pub enum UnderlineThickness {
-    Off = 0,
+    None = 0,
     OneDot = 1,
     TwoDot = 2,
 }
 
 impl Default for UnderlineThickness {
     fn default() -> Self {
-        Self::Off
+        Self::None
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize)]
 #[repr(u8)]
 pub enum Justification {
     Left = 0,
