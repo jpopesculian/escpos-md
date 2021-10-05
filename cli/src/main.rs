@@ -1,7 +1,9 @@
 use clap::Clap;
 use escpos_md::instruction::{BitMapAlgorithm, ImageOptions};
 use escpos_md::style::{RelativeStyle, StyleSheet};
-use escpos_md::{MarkdownParser, MarkdownRenderOptions, PrinterConfig, Result};
+use escpos_md::{
+    MarkdownParser, MarkdownParserOptions, MarkdownRenderOptions, PrinterConfig, Result,
+};
 use image::imageops::FilterType;
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -13,6 +15,16 @@ struct Opts {
     #[clap(short, long)]
     no_cut: bool,
     #[clap(long)]
+    strikethrough: bool,
+    #[clap(long)]
+    smart_punctuation: bool,
+    #[clap(long)]
+    margin_top: Option<usize>,
+    #[clap(long)]
+    margin_left: Option<usize>,
+    #[clap(long)]
+    margin_bottom: Option<usize>,
+    #[clap(long, default_value = "1")]
     image_scale: f64,
     #[clap(long, possible_values = &["nearest", "linear", "cubic", "gaussian", "lanczos"], default_value = "lanczos")]
     image_filter_type: String,
@@ -72,11 +84,29 @@ fn main() -> Result<()> {
     } else {
         io::stdin().read_to_string(&mut md)?;
     }
-    let parser = MarkdownParser::new(&md);
+
+    let mut parser_opts = MarkdownParserOptions::empty();
+    if opts.strikethrough {
+        parser_opts.insert(MarkdownParserOptions::ENABLE_STRIKETHROUGH);
+    }
+    if opts.smart_punctuation {
+        parser_opts.insert(MarkdownParserOptions::ENABLE_SMART_PUNCTUATION);
+    }
+    let parser = MarkdownParser::new_ext(&md, parser_opts);
 
     let mut printer = PrinterConfig::tm_t20ii().build(io::stdout())?;
 
+    printer.reset()?;
+    if let Some(margin_top) = opts.margin_top {
+        printer.feed_lines(margin_top)?;
+    }
+    if let Some(margin_left) = opts.margin_left {
+        printer.left_margin(margin_left as u16)?;
+    }
     printer.reset()?.markdown(parser, &render_opts)?;
+    if let Some(margin_bottom) = opts.margin_bottom {
+        printer.feed_lines(margin_bottom)?;
+    }
     if !opts.no_cut {
         printer.cut()?;
     }
